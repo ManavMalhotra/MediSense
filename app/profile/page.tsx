@@ -15,6 +15,7 @@ import { Loader2, Pencil, Save, LogOut } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
+
 export default function Profile() {
   const router = useRouter();
   const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
@@ -42,7 +43,6 @@ export default function Profile() {
         if (snapshot.exists()) {
           const data = snapshot.val();
           setDbUser(data);
-
           setEditForm({
             fullName: data.fullName || "",
             phone: data.phone || "",
@@ -117,6 +117,7 @@ export default function Profile() {
             </h1>
 
             <p className="text-sm text-gray-500">{firebaseUser.email}</p>
+            <p className="text-sm text-gray-500">{dbUser.patientDataId}</p>
           </div>
         </div>
 
