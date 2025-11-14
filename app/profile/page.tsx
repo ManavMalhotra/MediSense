@@ -106,7 +106,10 @@ export default function Profile() {
 
           <div>
             <h1 className="text-2xl font-semibold text-gray-900 flex items-center gap-2">
-              {dbUser?.fullName || "No Name Set"}
+              {/* FIXED NAME LOGIC */}
+              {isEditing
+                ? editForm.fullName || "Enter your name"
+                : dbUser?.fullName || "No Name Set"}
 
               <Badge variant="secondary" className="text-xs px-2 py-1">
                 {dbUser?.role?.toUpperCase()}
