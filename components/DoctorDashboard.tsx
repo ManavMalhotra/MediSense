@@ -2,22 +2,26 @@
 
 import { useState } from "react";
 import { ref, remove, get } from "firebase/database";
-import { db } from "@/lib/firebase";
+import { db } from "@/types/firebase";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { PatientData } from "@/types/patient";
 
 type Patient = {
   id: string;
   name: string;
+  age?: number;
   dob?: string;
   gender?: string;
   height_cm?: string;
   weight_kg?: string;
+  heartRate?: number;
+  [key: string]: any;
 };
 
-type DoctorDashboardProps = {
-  patients: Patient[];
-};
+interface DoctorDashboardProps {
+  patients: PatientData[];
+}
 
 export default function DoctorDashboard({ patients }: DoctorDashboardProps) {
   const [showScannerModal, setShowScannerModal] = useState(false);

@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { onAuthStateChanged } from "firebase/auth";
 import { ref, get } from "firebase/database";
-import { auth, db } from "@/lib/firebase";
+import { auth, db } from "@/types/firebase";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import { setUser, setAuthStatus, clearUser } from "@/store/authSlice";
 

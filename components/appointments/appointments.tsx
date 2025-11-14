@@ -1,23 +1,23 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import { Header } from "@/components/dashboard/header"
-import { Sidebar } from "@/components/dashboard/sidebar"
-import { ChatPanel } from "@/components/dashboard/chat-panel"
-import { AppointmentForm } from "./appointment-form"
-import { BookedAppointmentsTable } from "./booked-appointments-table"
+import { useState } from "react";
+import { Header } from "@/_temp/header";
+import { Sidebar } from "@/_temp/sidebar";
+import { ChatPanel } from "@/components/dashboard/chat-panel";
+import { AppointmentForm } from "./appointment-form";
+import { BookedAppointmentsTable } from "./booked-appointments-table";
 
 export function Appointments() {
-  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
-    <div className="flex h-screen bg-background flex-col md:flex-row">
-      <Sidebar isOpen={sidebarOpen} />
+    <div className="flex h-screen bg-background flex-col md:flex-row ">
+      {/* <Sidebar isOpen={sidebarOpen} /> */}
 
       {/* Main Content Area */}
       <div className="flex flex-col flex-1 overflow-hidden">
         {/* Header */}
-        <Header onMenuClick={() => setSidebarOpen(!sidebarOpen)} />
+        {/* <Header onMenuClick={() => setSidebarOpen(!sidebarOpen)} /> */}
 
         {/* Content with Chat - Stack vertically on mobile, horizontal on lg+ */}
         <div className="flex flex-col lg:flex-row flex-1 overflow-hidden">
@@ -33,9 +33,9 @@ export function Appointments() {
           </div>
 
           {/* Chat Panel */}
-          <ChatPanel />
+          {/* <ChatPanel /> */}
         </div>
       </div>
     </div>
-  )
+  );
 }

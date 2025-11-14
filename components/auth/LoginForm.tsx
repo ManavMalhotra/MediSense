@@ -4,9 +4,9 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { signInWithEmailAndPassword } from "firebase/auth";
-import { auth } from "@/lib/firebase";
+import { auth } from "@/types/firebase";
 // NEW: Import the shared service function
-import { handleGoogleSignIn } from "@/lib/authService";
+import { handleGoogleSignIn } from "@/types/authService";
 
 export default function LoginForm() {
   const [email, setEmail] = useState("");

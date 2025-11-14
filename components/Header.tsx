@@ -1,24 +1,37 @@
 "use client";
-import React from "react";
+import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import Image from "next/image";
+import { Bell, Settings, Menu } from "lucide-react";
 import cardiosense_logo from "@/app/img/cardiosense_logo.svg";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
-  MagnifyingGlassIcon,
-  Cog6ToothIcon,
-  BellIcon,
-} from "@heroicons/react/24/outline";
-import { ChevronDownIcon } from "@heroicons/react/20/solid";
 
+// Mock notifications (fixed missing fields)
+const mockNotifications = [
+  {
+    id: 1,
+    title: "Notification1 Heading",
+    message:
+      "doctor's dashboard and the patient's dashboard with the right balance of information is critical",
+    time: "2m ago",
+  },
+  {
+    id: 2,
+    title: "High Alert: Patient At-Risk",
+    message:
+      "Patient Lakshya Singh's vitals are trending downwards. Please review immediately.",
+    time: "10m ago",
+  },
+  {
+    id: 3,
+    title: "System Update",
+    message:
+      "The reporting module will be updated tonight at 10 PM. Expect brief downtime.",
+    time: "1h ago",
+  },
+];
+
+// Better logo component
 const CardioSenseLogo = () => (
   <Image
     src={cardiosense_logo}
@@ -27,91 +40,79 @@ const CardioSenseLogo = () => (
   />
 );
 
-const mockNotifications = [
-  {
-    id: 1,
-    title: "Notification1 Heading",
-    message:
-      "doctor's dashboard and the patient's dashboard with the right balance of information is critical",
-  },
-  {
-    id: 2,
-    title: "High Alert: Patient At-Risk",
-    message:
-      "Patient Lakshya Singh's vitals are trending downwards. Please review immediately.",
-  },
-  {
-    id: 3,
-    title: "System Update",
-    message:
-      "The reporting module will be updated tonight at 10 PM. Expect brief downtime.",
-  },
-];
-
 const DashboardHeader = () => {
-  const notificationCount = mockNotifications.length;
+  // FIX: missing state
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+
+  // FIX: notifications reference
+  const notifications = mockNotifications;
+
+  // FIX: placeholder for menu click
+  const onMenuClick = () => {
+    console.log("Menu clicked");
+  };
 
   return (
-    <header className="bg-white w-full flex items-center justify-between px-6 py-3 border-b border-gray-200">
-      LOGO
-
-      <div className="flex items-center gap-4">
-        <div className="relative w-72">
-          <MagnifyingGlassIcon className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
-          <Input
-            type="search"
-            placeholder="Search here..."
-            className="pl-11 bg-gray-50 rounded-lg border-gray-200"
-          />
-        </div>
-
+    <header className="border-b border-border bg-card h-14 sm:h-16 flex items-center justify-between px-4 sm:px-6">
+      {/* Left: Logo and Menu */}
+      <div className="flex items-center gap-2 sm:gap-4">
         <Button
           variant="ghost"
           size="icon"
-          className="text-gray-500 hover:bg-gray-100 rounded-lg"
+          onClick={onMenuClick}
+          className="md:hidden h-8 w-8 sm:h-10 sm:w-10"
         >
-          <Cog6ToothIcon className="h-6 w-6" />
-          <span className="sr-only">Settings</span>
+          <Menu className="h-4 w-4 sm:h-5 sm:w-5" />
         </Button>
 
-        <DropdownMenu>
+        <div className="flex items-center gap-2">
+          {/* <CardioSenseLogo /> */}
+
+          <span className="font-bold text-sm sm:text-lg hidden sm:inline">
+            CardioSense
+          </span>
+        </div>
+      </div>
+
+      {/* Right: Settings + Notifications */}
+      <div className="flex items-center gap-1 sm:gap-2">
+        {/* Notifications Dropdown */}
+        <DropdownMenu open={notificationsOpen} onOpenChange={setNotificationsOpen}>
           <DropdownMenuTrigger asChild>
             <Button
-              variant="outline"
-              className="flex items-center gap-2 bg-white rounded-lg px-4 py-2 h-auto "
+              variant="ghost"
+              size="icon"
+              className="relative h-8 w-8 sm:h-10 sm:w-10"
             >
-              <BellIcon className="h-5 w-5 text-gray-600" />
-              <span className="font-medium text-gray-700">Notifications</span>
-              {notificationCount > 0 && (
-                <span className="bg-blue-500 text-white text-xs font-bold w-5 h-5 flex items-center justify-center rounded-full">
-                  {notificationCount}
-                </span>
-              )}
-              <ChevronDownIcon className="h-5 w-5 text-gray-400" />
+              <Bell className="h-4 w-4 sm:h-5 sm:w-5" />
+              <span className="absolute top-1 right-1 w-2 h-2 bg-destructive rounded-full" />
             </Button>
           </DropdownMenuTrigger>
 
-          <DropdownMenuContent
-            align="end"
-            className="w-96 p-2 bg-white rounded-lg shadow-lg"
-          >
-            <DropdownMenuLabel className="px-2 py-1.5 font-semibold">
-              Recent Notifications
-            </DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            {mockNotifications.map((notif) => (
+          <DropdownMenuContent align="end" className="w-72 sm:w-80">
+            <div className="px-4 py-3 border-b border-border">
+              <h3 className="font-semibold text-sm">Notifications</h3>
+            </div>
+
+            {notifications.map((notif) => (
               <DropdownMenuItem
                 key={notif.id}
-                className="flex flex-col items-start gap-1 p-3 rounded-md"
+                className="flex flex-col items-start py-3 px-4 cursor-default hover:bg-muted text-xs sm:text-sm"
               >
-                <p className="font-semibold text-gray-800">{notif.title}</p>
-                <p className="text-sm text-gray-500 leading-snug whitespace-normal">
-                  {notif.message}
+                <p className="font-medium">{notif.title}</p>
+                <p>{notif.message}</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {notif.time}
                 </p>
               </DropdownMenuItem>
             ))}
           </DropdownMenuContent>
         </DropdownMenu>
+
+        {/* Settings */}
+        <Button variant="ghost" size="icon" className="h-8 w-8 sm:h-10 sm:w-10">
+          <Settings className="h-4 w-4 sm:h-5 sm:w-5" />
+        </Button>
       </div>
     </header>
   );

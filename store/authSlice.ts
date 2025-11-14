@@ -1,8 +1,8 @@
 import { createSlice, PayloadAction } from "@reduxjs/toolkit";
-import type { User } from "@/lib/types";
+import type { BaseUser } from "@/types/auth";
 
 interface AuthState {
-  user: User | null;
+  user: BaseUser | null;
   status: "idle" | "loading" | "succeeded" | "failed";
   error: string | null;
 }
@@ -20,7 +20,7 @@ const authSlice = createSlice({
     setAuthStatus: (state, action: PayloadAction<AuthState["status"]>) => {
       state.status = action.payload;
     },
-    setUser: (state, action: PayloadAction<User | null>) => {
+    setUser: (state, action: PayloadAction<BaseUser | null>) => {
       state.user = action.payload;
       state.status = action.payload ? "succeeded" : "idle";
       state.error = null;
