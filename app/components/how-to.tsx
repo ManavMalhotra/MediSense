@@ -31,23 +31,23 @@ export function HowTo() {
   const steps = [
     {
       step: 1,
-      title: "Register Yourself",
-      desc: "Sign up on our platform to create your personal health profile.",
+      title: "Set Up Your Profile",
+      desc: "Create your health profile or scan your Smart Health Card to load your records instantly.",
     },
     {
       step: 2,
-      title: "Receive Your Kit",
-      desc: "Get the IoT heart monitoring device delivered to your home.",
+      title: "Connect the Smart Medicine Box",
+      desc: "Power on the IoT pill box and let it auto-sync with your app for real-time dose tracking.",
     },
     {
       step: 3,
-      title: "Monitor Your Health",
-      desc: "Record ECG and pulse anytime and view the results on your dashboard.",
+      title: "Use the AI Assistant",
+      desc: "Ask the AI (voice or chat) to remind medicines, book appointments, or explain prescriptions in simple language.",
     },
     {
       step: 4,
-      title: "Connect with a Doctor",
-      desc: "Share your readings with a specialist for advice and detailed reports.",
+      title: "Track & Share Your Health",
+      desc: "View your vitals, dose history, and medical reports in one dashboard and share it with doctors or family when needed.",
     },
   ];
 

@@ -1,11 +1,11 @@
-import { Card, CardContent, CardHeader, CardTitle } from "./ui/card"
-import { Activity, Brain, CreditCard } from "lucide-react"
+import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
+import { Activity, Brain, CreditCard } from "lucide-react";
 
 const features = [
   {
-    title: "Real-Time Heart Monitoring",
+    title: "Timely Medication Reminders",
     description:
-      "Record ECG and pulse anytime, anywhere with our IoT device. Stay connected to your health with instant data updates on your dashboard.",
+      "Never miss a dose again with our smart reminders. Get notifications on your phone or email when it's time to take your medications.",
     Icon: Activity,
   },
   {
@@ -20,7 +20,7 @@ const features = [
       "Carry your complete medical history securely in one digital card. Access past reports and health records anytime, from birth to present.",
     Icon: CreditCard,
   },
-]
+];
 
 export function Features() {
   return (
@@ -30,14 +30,20 @@ export function Features() {
           <Card key={title}>
             <CardHeader className="flex-row items-center gap-3">
               <div className="rounded-md bg-accent p-2 text-accent-foreground">
-                <Icon className="h-5 w-5" aria-hidden="true" style={{ color: "#8B5CF6" }} />
+                <Icon
+                  className="h-5 w-5"
+                  aria-hidden="true"
+                  style={{ color: "#8B5CF6" }}
+                />
               </div>
               <CardTitle className="text-base md:text-lg">{title}</CardTitle>
             </CardHeader>
-            <CardContent className="text-sm text-muted-foreground">{description}</CardContent>
+            <CardContent className="text-sm text-muted-foreground">
+              {description}
+            </CardContent>
           </Card>
         ))}
       </div>
     </section>
-  )
+  );
 }
