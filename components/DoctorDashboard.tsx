@@ -1,12 +1,12 @@
-//DOCTOR
 "use client";
 
-import { useState } from "react";
-import { ref, remove, get } from "firebase/database";
+import { useState, useEffect } from "react";
+import { onValue, ref, remove, get, set } from "firebase/database";
 import { db } from "@/lib/firebase";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { PatientData } from "@/types/patient";
+import Swal from "sweetalert2";
 
 type Patient = {
   id: string;
@@ -28,12 +28,21 @@ export default function DoctorDashboard({ patients }: DoctorDashboardProps) {
   const [showScannerModal, setShowScannerModal] = useState(false);
   const [scannedId, setScannedId] = useState("");
   const [loadingScan, setLoadingScan] = useState(false);
+  const [rfidStatus, setRfidStatus] = useState("off");
+
   const router = useRouter();
 
   // Open scanner modal
+  // const handleOpenScanner = () => {
+  //   setShowScannerModal(true);
+  //   setScannedId("");
+  // };
   const handleOpenScanner = () => {
     setShowScannerModal(true);
     setScannedId("");
+
+    // Reset last RFID scan
+    set(ref(db, "rfid/last_uid"), "");
   };
 
   // Handle RFID scan input
@@ -70,6 +79,106 @@ export default function DoctorDashboard({ patients }: DoctorDashboardProps) {
       alert("Failed to remove patient.");
     }
   };
+  // useEffect(() => {
+  //   const statusRef = ref(db, "rfid/status");
+  //   const uidRef = ref(db, "rfid/last_uid");
+
+  //   // RFID ON/OFF listener
+  //   onValue(statusRef, (snapshot) => {
+  //     if (snapshot.exists()) {
+  //       setRfidStatus(snapshot.val());
+  //     }
+  //   });
+
+  //   // Listen for scanned card UID
+  //   onValue(uidRef, async (snapshot) => {
+  //     const uid = snapshot.val();
+  //     if (!uid) return;
+
+  //     console.log("RFID scanned UID:", uid);
+
+  //     const snap = await get(ref(db, `patients/${uid}`));
+  //     if (snap.exists()) {
+  //       setShowScannerModal(false);
+  //       // router.push(`/patient/${uid}`);
+  //       // 🔥 Loading Animation
+  //       Swal.fire({
+  //         title: "Loading Patient...",
+  //         text: "Please wait while we open the patient's profile.",
+  //         allowOutsideClick: false,
+  //         didOpen: () => {
+  //           Swal.showLoading();
+  //         },
+  //       });
+
+  //       // Give animation time then redirect
+  //       setTimeout(() => {
+  //         Swal.close(); // 🔥 CLOSE THE LOADER
+  //         router.push(`/patient/${uid}`);
+  //       }, 700);
+  //     } else {
+  //       // alert("❌ No patient found for this RFID.");
+
+  //       Swal.fire({
+  //         icon: "error",
+  //         title: "Patient Not Found",
+  //         text: "No patient exists with this RFID card.",
+  //         confirmButtonColor: "#3085d6",
+  //       });
+  //     }
+  //   });
+  // }, []);
+  // 1) STATUS listener → always active
+  useEffect(() => {
+    const statusRef = ref(db, "rfid/status");
+
+    const offStatus = onValue(statusRef, (snapshot) => {
+      if (snapshot.exists()) setRfidStatus(snapshot.val());
+    });
+
+    return () => offStatus();
+  }, []);
+
+  // 2) UID listener → only active when SCAN MODAL is OPEN
+  useEffect(() => {
+    if (!showScannerModal) return; // ❗ Only listen when modal is open
+
+    const uidRef = ref(db, "rfid/last_uid");
+
+    const offUid = onValue(uidRef, async (snapshot) => {
+      const uid = snapshot.val();
+      if (!uid) return;
+
+      console.log("RFID scanned UID:", uid);
+
+      const snap = await get(ref(db, `patients/${uid}`));
+
+      if (snap.exists()) {
+        setShowScannerModal(false);
+
+        Swal.fire({
+          title: "Loading Patient...",
+          text: "Please wait while we open the patient profile...",
+          allowOutsideClick: false,
+          didOpen: () => Swal.showLoading(),
+        });
+
+        setTimeout(() => {
+          Swal.close();
+          router.push(`/patient/${uid}`);
+        }, 700);
+      } else {
+        Swal.fire({
+          icon: "error",
+          title: "Patient Not Found",
+          text: "No patient exists with this RFID card.",
+          confirmButtonColor: "#3085d6",
+        });
+      }
+    });
+
+    return () => offUid(); // ❗ Remove listener when modal closes
+  }, [showScannerModal]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -134,7 +243,7 @@ export default function DoctorDashboard({ patients }: DoctorDashboardProps) {
             <h2 className="text-xl font-semibold text-gray-800 mb-2">
               Scan Patient RFID
             </h2>
-            <p className="text-gray-500 mb-6 text-sm">
+            {/* <p className="text-gray-500 mb-6 text-sm">
               Please scan the patient’s RFID card. If the ID exists, you’ll be
               redirected to their dashboard.
             </p>
@@ -145,6 +254,39 @@ export default function DoctorDashboard({ patients }: DoctorDashboardProps) {
               value={scannedId}
               onChange={handleScanInput}
               disabled={loadingScan}
+              className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+              placeholder="Waiting for RFID scan..."
+            />
+
+            {scannedId && (
+              <p className="mt-3 text-sm text-gray-700">
+                <span className="font-medium">Scanned ID:</span> {scannedId}
+              </p>
+            )} */}
+            <p className="text-gray-500 mb-6 text-sm">
+              Please scan the patient’s RFID card. If the ID exists, you’ll be
+              redirected to their dashboard.
+            </p>
+
+            {/* NEW — RFID STATUS INDICATOR */}
+            <p className="text-sm mb-3">
+              RFID Status:{" "}
+              <span
+                className={
+                  rfidStatus === "on" ? "text-green-600" : "text-red-600"
+                }
+              >
+                {rfidStatus.toUpperCase()}
+              </span>
+            </p>
+
+            {/* NEW — DISABLE MANUAL TYPING */}
+            <input
+              type="text"
+              autoFocus
+              value={scannedId}
+              onChange={handleScanInput}
+              disabled={true} // always disabled because RFID scanner will fill
               className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-blue-500 focus:outline-none"
               placeholder="Waiting for RFID scan..."
             />
