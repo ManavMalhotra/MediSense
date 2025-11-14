@@ -1,5 +1,27 @@
-import { Appointments } from "@/components/appointments/appointments"
+"use client";
+
+import { useAppSelector } from "@/store/hooks";
+import { AppointmentForm } from "@/components/appointments/appointment-form";
+import { BookedAppointmentsTable } from "@/components/appointments/BookedAppointmentsTable";
 
 export default function AppointmentsPage() {
-  return <Appointments />
+  const user = useAppSelector((s) => s.auth.user);
+
+  if (!user) {
+    return (
+      <div className="max-w-6xl mx-auto p-6 text-red-500">
+        Error: User not found. Please log in again.
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-6xl mx-auto space-y-6 p-4 md:p-8">
+      {/* Only patients can book appointments */}
+      {user.role === "patient" && <AppointmentForm />}
+
+      {/* Both doctor and patient can view appointments */}
+      <BookedAppointmentsTable />
+    </div>
+  );
 }

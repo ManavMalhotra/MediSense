@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { ref, remove, get } from "firebase/database";
-import { db } from "@/types/firebase";
+import { db } from "@/lib/firebase";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { PatientData } from "@/types/patient";

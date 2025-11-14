@@ -1,6 +1,6 @@
 import { signInWithPopup } from "firebase/auth";
 import { ref, get } from "firebase/database";
-import { auth, googleProvider, db } from "@/types/firebase";
+import { auth, googleProvider, db } from "@/lib/firebase";
 import { AppRouterInstance } from "next/dist/shared/lib/app-router-context.shared-runtime";
 
 /**

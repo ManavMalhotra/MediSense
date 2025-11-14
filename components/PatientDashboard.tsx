@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { ref, get } from "firebase/database";
-import { db } from "@/types/firebase";
+import { db } from "@/lib/firebase";
 import HealthScoreGraph from "@/components/HealthScoreGraph";
 import CheckupHistoryTable from "@/components/CheckupHistoryTable";
 import { PatientData } from "@/types/patient";

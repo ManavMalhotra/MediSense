@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { ref, get } from "firebase/database";
-import { db } from "@/types/firebase";
+import { db } from "@/lib/firebase";
 import PatientDashboard from "@/components/PatientDashboard";
 
 type Patient = {

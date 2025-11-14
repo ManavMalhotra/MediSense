@@ -5,7 +5,7 @@ import { Header } from "@/_temp/header";
 import { Sidebar } from "@/_temp/sidebar";
 import { ChatPanel } from "@/components/dashboard/chat-panel";
 import { AppointmentForm } from "./appointment-form";
-import { BookedAppointmentsTable } from "./booked-appointments-table";
+import { BookedAppointmentsTable } from "./BookedAppointmentsTable";
 
 export function Appointments() {
   const [sidebarOpen, setSidebarOpen] = useState(false);

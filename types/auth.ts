@@ -1,8 +1,10 @@
 // BASE SHARED FIELDS FOR ALL USERS
 export interface BaseUser {
   uid: string;
+  name?: string;
   email: string | null;
   role: "doctor" | "patient";
+  patientDataId?: string | null;
 }
 
 // DOCTOR TYPE

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createUserWithEmailAndPassword } from "firebase/auth";
-import { auth } from "@/types/firebase";
+import { auth } from "@/lib/firebase";
 import { handleGoogleSignIn } from "@/types/authService";
 
 export default function RegisterForm() {
