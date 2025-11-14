@@ -15,6 +15,8 @@ import { Input } from "@/components/ui/input";
 import { ref, push, set, get } from "firebase/database";
 import { db } from "@/lib/firebase";
 import { useAppSelector } from "@/store/hooks";
+import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 
 type DoctorInfo = {
   uid: string;
@@ -44,6 +46,9 @@ export function AppointmentForm() {
     "04:00 PM",
   ];
 
+  const today = new Date().toISOString().split("T")[0];
+
+  // Load doctors
   useEffect(() => {
     const fetchDoctors = async () => {
       try {
@@ -67,6 +72,7 @@ export function AppointmentForm() {
         setDoctors(docs);
       } catch (err) {
         console.error("Error loading doctors:", err);
+        toast.error("Failed to load doctors. Try again later.");
       } finally {
         setLoadingDoctors(false);
       }
@@ -75,11 +81,19 @@ export function AppointmentForm() {
     fetchDoctors();
   }, []);
 
+  // Submit booking
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!user) return alert("User not logged in");
-    if (!specialist || !slot || !mode || !date) return;
+    if (!user) {
+      toast.error("Please login first.");
+      return;
+    }
+
+    if (!specialist || !slot || !mode || !date) {
+      toast.error("Please fill all fields.");
+      return;
+    }
 
     setLoading(true);
 
@@ -91,8 +105,8 @@ export function AppointmentForm() {
         doctorId: specialist,
         patientId: user.uid,
         patientDataId: user.patientDataId ?? null,
-        patientName: user.fullName || "Unknown Patient",
-        patientEmail: user.email || "N/A",
+        patientName: user.fullName ?? "Unknown Patient",
+        patientEmail: user.email ?? "N/A",
 
         date,
         time: slot,
@@ -103,7 +117,7 @@ export function AppointmentForm() {
 
       await set(ref(db, `appointments/${appointmentId}`), appointmentData);
 
-      alert("Appointment booked successfully!");
+      toast.success(`Appointment booked for ${date} at ${slot}`);
 
       setSpecialist("");
       setDate("");
@@ -111,23 +125,25 @@ export function AppointmentForm() {
       setMode("");
     } catch (err) {
       console.error("Error booking appointment:", err);
-      alert("Failed to book appointment");
+      toast.error("Failed to book appointment.");
     }
 
     setLoading(false);
   };
 
   return (
-    <Card className="w-full">
+    <Card className="w-full border border-gray-200 shadow-sm">
       <CardHeader>
-        <CardTitle className="text-lg md:text-xl">Book Appointment</CardTitle>
+        <CardTitle className="text-lg md:text-xl font-semibold">
+          Book Appointment
+        </CardTitle>
       </CardHeader>
 
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* SELECT DOCTOR */}
           <div className="space-y-2">
-            <label className="text-sm font-medium">Select Specialist *</label>
+            <label className="text-sm font-medium">Select Doctor *</label>
             <Select
               value={specialist}
               onValueChange={setSpecialist}
@@ -136,7 +152,7 @@ export function AppointmentForm() {
               <SelectTrigger className="w-full">
                 <SelectValue
                   placeholder={
-                    loadingDoctors ? "Loading doctors..." : "Choose specialist"
+                    loadingDoctors ? "Loading doctors..." : "Choose doctor"
                   }
                 />
               </SelectTrigger>
@@ -162,13 +178,14 @@ export function AppointmentForm() {
             <label className="text-sm font-medium">Select Date *</label>
             <Input
               type="date"
+              min={today}
               value={date}
               onChange={(e) => setDate(e.target.value)}
               className="w-full"
             />
           </div>
 
-          {/* TIME SLOT PILL BUTTONS */}
+          {/* TIME SLOT */}
           <div className="space-y-2">
             <label className="text-sm font-medium">Select Time Slot *</label>
 
@@ -177,9 +194,12 @@ export function AppointmentForm() {
                 <Button
                   key={t}
                   type="button"
-                  variant={slot === t ? "default" : "outline"}
                   onClick={() => setSlot(t)}
-                  className="py-2"
+                  variant={slot === t ? "default" : "outline"}
+                  className={cn(
+                    "py-2 transition-all duration-200",
+                    slot === t && "scale-[1.05]"
+                  )}
                 >
                   {t}
                 </Button>
@@ -198,7 +218,10 @@ export function AppointmentForm() {
                   type="button"
                   variant={mode === m ? "default" : "outline"}
                   onClick={() => setMode(m)}
-                  className="capitalize"
+                  className={cn(
+                    "capitalize transition-all duration-200",
+                    mode === m && "scale-[1.05]"
+                  )}
                 >
                   {m}
                 </Button>
@@ -206,10 +229,11 @@ export function AppointmentForm() {
             </div>
           </div>
 
+          {/* SUBMIT BUTTON */}
           <Button
             type="submit"
             disabled={!specialist || !slot || !mode || !date || loading}
-            className="w-full md:w-auto mt-4"
+            className="w-full md:w-auto mt-4 transition-all"
           >
             {loading ? "Booking..." : "Book Appointment"}
           </Button>

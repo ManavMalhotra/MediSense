@@ -9,8 +9,12 @@ import { Card } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+
 import { Loader2, Pencil, Save, LogOut } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
+
 
 export default function Profile() {
   const router = useRouter();
@@ -39,7 +43,6 @@ export default function Profile() {
         if (snapshot.exists()) {
           const data = snapshot.val();
           setDbUser(data);
-
           setEditForm({
             fullName: data.fullName || "",
             phone: data.phone || "",
@@ -59,15 +62,20 @@ export default function Profile() {
   const handleSave = async () => {
     if (!firebaseUser) return;
 
-    await update(ref(db, `users/${firebaseUser.uid}`), {
-      fullName: editForm.fullName,
-      phone: editForm.phone,
-      emergencyContact: editForm.emergencyContact,
-      address: editForm.address,
-    });
+    try {
+      await update(ref(db, `users/${firebaseUser.uid}`), {
+        fullName: editForm.fullName,
+        phone: editForm.phone,
+        emergencyContact: editForm.emergencyContact,
+        address: editForm.address,
+      });
 
-    setDbUser({ ...dbUser, ...editForm });
-    setIsEditing(false);
+      setDbUser({ ...dbUser, ...editForm });
+      setIsEditing(false);
+      toast.success("Profile updated successfully");
+    } catch (err) {
+      toast.error("Failed to update profile.");
+    }
   };
 
   // Logout
@@ -87,34 +95,42 @@ export default function Profile() {
 
   return (
     <div className="p-6 max-w-2xl mx-auto">
-      <Card className="p-8 space-y-8 shadow-sm rounded-2xl border border-gray-200 bg-white">
+      <Card className="p-8 space-y-8 shadow-sm rounded-2xl border border-gray-200 bg-white animate-in fade-in slide-in-from-bottom-4 duration-300">
         {/* HEADER */}
         <div className="flex items-center gap-5">
-          <Avatar className="h-20 w-20">
+          <Avatar className="h-20 w-20 transition hover:scale-105 hover:shadow-md">
             <AvatarFallback className="text-xl bg-indigo-100 text-indigo-700">
-              {firebaseUser?.email?.substring(0, 2).toUpperCase()}
+              {firebaseUser.email?.substring(0, 2).toUpperCase()}
             </AvatarFallback>
           </Avatar>
 
           <div>
-            <h1 className="text-2xl font-semibold">
-              {dbUser?.fullName || "No Name Set"}
+            <h1 className="text-2xl font-semibold text-gray-900 flex items-center gap-2">
+              {/* FIXED NAME LOGIC */}
+              {isEditing
+                ? editForm.fullName || "Enter your name"
+                : dbUser?.fullName || "No Name Set"}
+
+              <Badge variant="secondary" className="text-xs px-2 py-1">
+                {dbUser?.role?.toUpperCase()}
+              </Badge>
             </h1>
+
             <p className="text-sm text-gray-500">{firebaseUser.email}</p>
-            <p className="text-sm text-indigo-600 font-medium">
-              {dbUser?.role?.toUpperCase()}
-            </p>
+            <p className="text-sm text-gray-500">{dbUser.patientDataId}</p>
           </div>
         </div>
 
         {/* PROFILE SECTION */}
         <div className="border-t pt-6 space-y-4">
-          <h2 className="font-semibold text-lg">Profile Details</h2>
+          <h2 className="font-semibold text-lg">Profile Information</h2>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {/* Full Name */}
             <div className="sm:col-span-2">
-              <p className="text-sm font-medium text-gray-700">Full Name</p>
+              <label className="text-sm font-medium text-gray-700">
+                Full Name
+              </label>
               {isEditing ? (
                 <Input
                   value={editForm.fullName}
@@ -123,25 +139,15 @@ export default function Profile() {
                   }
                 />
               ) : (
-                <p className="text-sm">{dbUser?.fullName || "Not set"}</p>
+                <p className="text-sm text-gray-800">
+                  {dbUser?.fullName || "Not set"}
+                </p>
               )}
-            </div>
-
-            {/* Patient ID */}
-            <div>
-              <p className="text-sm font-medium text-gray-700">Patient ID</p>
-              <p className="text-sm">{dbUser?.patientDataId || "—"}</p>
-            </div>
-
-            {/* Device Status */}
-            <div>
-              <p className="text-sm font-medium text-gray-700">Device Status</p>
-              <p className="text-sm">{dbUser?.deviceStatus ?? "—"}</p>
             </div>
 
             {/* Phone */}
             <div>
-              <p className="text-sm font-medium text-gray-700">Phone</p>
+              <label className="text-sm font-medium text-gray-700">Phone</label>
               {isEditing ? (
                 <Input
                   value={editForm.phone}
@@ -150,15 +156,17 @@ export default function Profile() {
                   }
                 />
               ) : (
-                <p className="text-sm">{dbUser?.phone || "Not set"}</p>
+                <p className="text-sm text-gray-800">
+                  {dbUser?.phone || "Not set"}
+                </p>
               )}
             </div>
 
             {/* Emergency Contact */}
             <div>
-              <p className="text-sm font-medium text-gray-700">
+              <label className="text-sm font-medium text-gray-700">
                 Emergency Contact
-              </p>
+              </label>
               {isEditing ? (
                 <Input
                   value={editForm.emergencyContact}
@@ -170,7 +178,7 @@ export default function Profile() {
                   }
                 />
               ) : (
-                <p className="text-sm">
+                <p className="text-sm text-gray-800">
                   {dbUser?.emergencyContact || "Not set"}
                 </p>
               )}
@@ -178,7 +186,9 @@ export default function Profile() {
 
             {/* Address */}
             <div className="sm:col-span-2">
-              <p className="text-sm font-medium text-gray-700">Address</p>
+              <label className="text-sm font-medium text-gray-700">
+                Address
+              </label>
               {isEditing ? (
                 <Input
                   value={editForm.address}
@@ -187,7 +197,9 @@ export default function Profile() {
                   }
                 />
               ) : (
-                <p className="text-sm">{dbUser?.address || "Not set"}</p>
+                <p className="text-sm text-gray-800">
+                  {dbUser?.address || "Not set"}
+                </p>
               )}
             </div>
           </div>

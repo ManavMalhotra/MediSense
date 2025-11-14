@@ -74,6 +74,7 @@ export default function DashboardPage() {
   if (!user) return <div>No user found. Please log in again.</div>;
 
   if (user.role === "doctor") {
+    // @ts-ignore
     return <DoctorDashboard patients={patientsList} />;
   }
 
