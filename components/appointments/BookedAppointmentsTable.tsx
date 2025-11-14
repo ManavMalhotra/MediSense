@@ -20,9 +20,7 @@ export function BookedAppointmentsTable() {
   const user = useAppSelector((s) => s.auth.user);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
 
-  // --------------------------
   // FIX: Early return for user
-  // --------------------------
   if (!user) {
     return (
       <div className="bg-white p-6 rounded shadow text-red-500">
@@ -52,8 +50,8 @@ export function BookedAppointmentsTable() {
     });
 
     return () => unsub();
-  }, [user.uid, user.role]); // safe after narrowing
-
+  }, [user.uid, user.role]);
+  
   return (
     <div className="bg-white p-6 rounded shadow">
       <h2 className="font-bold text-lg mb-4">Appointments</h2>
