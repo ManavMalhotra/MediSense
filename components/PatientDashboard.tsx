@@ -64,7 +64,7 @@ export default function PatientDashboard({
         transition={{ duration: 0.5 }}
       >
         <h1 className="text-2xl font-semibold text-gray-800">
-          Good Evening, {patient.name || "Patient"} 👋
+          Good Morning, {patient.name || "Patient"} 👋
         </h1>
         <p className="text-sm text-gray-500 mt-1">Last synced: 2 mins ago</p>
       </motion.div>
