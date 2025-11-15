@@ -363,6 +363,21 @@ export default function RemindersPage({
   const upcoming = reminders.filter((r) => r.enabled);
   const missed = reminders.filter((r) => !r.enabled);
 
+  const addTimeSlot = () => setTimes((s) => [...s, "09:00"]);
+  const removeTimeSlot = (idx: number) =>
+    setTimes((s) => s.filter((_, i) => i !== idx));
+  const updateTimeSlot = (idx: number, val: string) =>
+    setTimes((s) => s.map((t, i) => (i === idx ? val : t)));
+
+  const toggleWeekday = (day: string) => {
+    setWeekdays((prev) =>
+      prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day]
+    );
+  };
+
+  // ------------------------------------------------------------------
+  // Render
+  // ------------------------------------------------------------------
   return (
     <div className="p-6 max-w-4xl mx-auto">
       {/* Toast */}
@@ -437,7 +452,7 @@ export default function RemindersPage({
       {/* Content */}
       <div className="space-y-8">
         {/* Upcoming */}
-        <section>
+        <div>
           <h2 className="text-lg font-semibold text-gray-700 mb-3">Upcoming</h2>
           <div className="space-y-3">
             {upcoming.length === 0 && (
@@ -453,7 +468,7 @@ export default function RemindersPage({
               />
             ))}
           </div>
-        </section>
+        </div>
 
         {/* Missed / Disabled */}
         <section>
@@ -502,7 +517,7 @@ export default function RemindersPage({
               </div>
             ))}
           </div>
-        </section>
+        </div>
       </div>
 
       {/* Add/Edit Modal */}
@@ -513,24 +528,26 @@ export default function RemindersPage({
               {editing ? "Edit reminder" : "Add reminder"}
             </h3>
 
-            <div className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="text-sm text-gray-700">Title</label>
+                <label className="text-sm text-gray-700">Medicine name</label>
                 <input
-                  value={newTitle}
-                  onChange={(e) => setNewTitle(e.target.value)}
+                  value={medicineName}
+                  onChange={(e) => setMedicineName(e.target.value)}
                   className="w-full border rounded-md p-2 mt-1"
                   placeholder="e.g. Morning Medicine"
                 />
               </div>
 
               <div>
-                <label className="text-sm text-gray-700">Time</label>
+                <label className="text-sm text-gray-700">
+                  Dosage (optional)
+                </label>
                 <input
-                  type="time"
-                  value={newTime}
-                  onChange={(e) => setNewTime(e.target.value)}
+                  value={dosage}
+                  onChange={(e) => setDosage(e.target.value)}
                   className="w-full border rounded-md p-2 mt-1"
+                  placeholder="e.g. 500 mg"
                 />
               </div>
 
@@ -563,6 +580,100 @@ export default function RemindersPage({
                   Save
                 </button>
               </div>
+
+              {/* Presets & times */}
+              <div className="md:col-span-2">
+                <label className="text-sm text-gray-700">
+                  Dose frequency / Times
+                </label>
+
+                <div className="mt-2 flex items-center gap-2">
+                  <button
+                    className={`px-3 py-1 rounded-md border ${
+                      preset === "once" ? "bg-purple-600 text-white" : ""
+                    }`}
+                    onClick={() => applyPreset("once")}
+                  >
+                    Once
+                  </button>
+                  <button
+                    className={`px-3 py-1 rounded-md border ${
+                      preset === "twice" ? "bg-purple-600 text-white" : ""
+                    }`}
+                    onClick={() => applyPreset("twice")}
+                  >
+                    Twice
+                  </button>
+                  <button
+                    className={`px-3 py-1 rounded-md border ${
+                      preset === "thrice" ? "bg-purple-600 text-white" : ""
+                    }`}
+                    onClick={() => applyPreset("thrice")}
+                  >
+                    Thrice
+                  </button>
+                  <button
+                    className={`px-3 py-1 rounded-md border ${
+                      preset === "custom" ? "bg-purple-600 text-white" : ""
+                    }`}
+                    onClick={() => applyPreset("custom")}
+                  >
+                    Custom
+                  </button>
+
+                  <div className="ml-auto text-sm text-gray-500">
+                    Times per day: {times.length}
+                  </div>
+                </div>
+
+                {/* times list */}
+                <div className="mt-3 space-y-2">
+                  {times.map((t, idx) => (
+                    <div key={idx} className="flex items-center gap-2">
+                      <input
+                        type="time"
+                        value={t}
+                        onChange={(e) => updateTimeSlot(idx, e.target.value)}
+                        className="border rounded-md p-2"
+                      />
+                      <button
+                        className="px-3 py-1 bg-gray-200 rounded-md"
+                        onClick={() => removeTimeSlot(idx)}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+
+                  <div className="mt-2">
+                    <button
+                      onClick={addTimeSlot}
+                      className="px-3 py-1 bg-gray-100 rounded-md"
+                    >
+                      + Add time
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* actions */}
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  setShowModal(false);
+                  resetForm();
+                }}
+                className="px-4 py-2 bg-gray-200 rounded-md"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={saveReminder}
+                className="px-4 py-2 bg-purple-600 text-white rounded-md"
+              >
+                {editing ? "Save changes" : "Add reminder"}
+              </button>
             </div>
           </div>
         </div>
