@@ -2,7 +2,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import { onValue, ref, remove, get } from "firebase/database";
+import { onValue, ref, remove, get, set } from "firebase/database";
 import { db } from "@/lib/firebase";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -798,7 +798,8 @@ export default function DoctorDashboardRoot() {
   useEffect(() => {
     if (!showScannerModal) return;
     setListeningModal(true);
-
+    // 🔥 Clear before listening so old UID can't trigger
+    set(ref(db, "rfid/last_uid"), "");
     const uidRef = ref(db, "rfid/last_uid");
     const off = onValue(uidRef, async (snap) => {
       const uidVal = snap.val();
@@ -895,11 +896,18 @@ export default function DoctorDashboardRoot() {
     router.push(`/patient/${id}`);
   };
 
-  const setRfLastUidToEmpty = () => {
+  // const setRfLastUidToEmpty = () => {
+  //   try {
+  //     // intentionally left empty to avoid permission issues.
+  //     // If you want to actually write to DB, import and call set(ref(db,'rfid/last_uid'), '')
+  //   } catch {}
+  // };
+  const setRfLastUidToEmpty = async () => {
     try {
-      // intentionally left empty to avoid permission issues.
-      // If you want to actually write to DB, import and call set(ref(db,'rfid/last_uid'), '')
-    } catch {}
+      await set(ref(db, "rfid/last_uid"), "");
+    } catch (err) {
+      console.error("Failed clearing UID:", err);
+    }
   };
 
   /* -------------------------
@@ -917,7 +925,8 @@ export default function DoctorDashboardRoot() {
         </div>
         <div className="flex items-center gap-3">
           <button
-            onClick={() => {
+            onClick={async () => {
+              await setRfLastUidToEmpty(); // cleared safely
               setShowScannerModal(true);
             }}
             className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700"
