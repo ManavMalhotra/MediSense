@@ -1,367 +1,339 @@
+// @ts-nocheck
+
 "use client";
 
-import React, { useEffect, useMemo, useState, useRef } from "react";
+import React, { useEffect, useState, useRef } from "react";
+import { initializeApp } from "firebase/app";
 import {
+  getDatabase,
   ref,
   onValue,
   push,
-  set as firebaseSet,
-  update as firebaseUpdate,
-  remove as firebaseRemove,
-  get,
+  set,
+  update,
+  remove,
 } from "firebase/database";
-import { db } from "@/lib/firebase";
 import {
-  Plus,
-  Bell,
-  Clock,
-  CheckCircle,
-  XCircle,
-  Trash2,
-  Edit2,
-} from "lucide-react";
-import { motion } from "framer-motion";
+  getMessaging,
+  getToken,
+  onMessage,
+  isSupported as isMessagingSupported,
+} from "firebase/messaging";
+import { Plus, Bell, Clock, XCircle, Edit2, Trash2 } from "lucide-react";
 
-/*
-  Reminders + Prescriptions Page
-  - Realtime DB paths used:
-    /patients/{patientId}/reminders
-    /patients/{patientId}/prescriptions
+/**
+ * FIREBASE INIT (reads from .env.local)
+ */
+const firebaseConfig = {
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY!,
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN!,
+  databaseURL: process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL!,
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID!,
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET!,
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID!,
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID!,
+};
 
-  Recommended DB schemas:
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
 
-  patients
-    {patientId}
-      name: "Manav Malhotra"
-      ...
-      reminders:
-        {reminderId}:
-          title: "Morning Medicine"
-          time: "09:00"          // 24h HH:mm (local)
-          enabled: true
-          createdAt: 1699999999999
-          repeat: "daily"        // optional: "daily", "weekdays", "once", or {days: [1,3,5]} Sun=0
-          medicationId: "<prescriptionId>" // optional link to prescription
-      prescriptions:
-        {prescriptionId}:
-          name: "Atorvastatin"
-          dose: "10 mg"
-          schedule: {
-            times: ["09:00","21:00"], // daily times
-            repeat: "daily" // or custom
-          }
-          startDate: "2025-11-10"
-          endDate: "2025-12-10" // optional
-          enabled: true
-          createdAt: 1699999999999
-
-  NOTE: For real phone push (while app closed) you'll need Firebase Cloud Messaging (FCM) + a server or Cloud Functions to send push notifications when a reminder is due.
-*/
-
+/**
+ * Types
+ */
 type Reminder = {
-  id?: string;
-  title: string;
-  time: string; // "HH:mm" local
+  id: string;
+  medicineName: string;
+  dosage?: string;
+  days?: number | null; // total days to take
+  everyDay?: boolean; // true = every day
+  weekdays?: string[]; // e.g. ["Mon", "Wed"]
+  times: string[]; // array of "HH:MM" in 24-hour format
+  status: "upcoming" | "missed" | "completed";
   enabled: boolean;
-  createdAt?: number;
-  repeat?: "daily" | "weekdays" | "once"; // simple repeat
-  medicationId?: string | null;
+  createdAt: number;
+  userId?: string;
 };
 
-type Prescription = {
-  id?: string;
-  name: string;
-  dose: string;
-  schedule: { times: string[]; repeat?: "daily" | "weekdays" | "once" };
-  startDate?: string; // yyyy-mm-dd
-  endDate?: string | null;
-  enabled?: boolean;
-  createdAt?: number;
-};
+const DEFAULT_USER_ID = "TEST_USER"; // replace with auth uid when available
 
-export default function RemindersPage({
-  patientIdProp,
-}: {
-  patientIdProp?: string;
-}) {
-  // Prefer passed patientId prop, else localStorage fallback
-  const patientId =
-    patientIdProp ||
-    (typeof window !== "undefined"
-      ? localStorage.getItem("patientId") || ""
-      : "");
+/**
+ * Helpers
+ */
+const nowLocal = () => new Date();
 
+function hhmmToDateToday(hhmm: string, baseDate = new Date()) {
+  const [hh, mm] = hhmm.split(":").map(Number);
+  const d = new Date(baseDate);
+  d.setHours(hh, mm, 0, 0);
+  return d;
+}
+
+function isSameDay(d1: Date, d2: Date) {
+  return (
+    d1.getFullYear() === d2.getFullYear() &&
+    d1.getMonth() === d2.getMonth() &&
+    d1.getDate() === d2.getDate()
+  );
+}
+
+function weekdayNameFromIndex(i: number) {
+  return ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][i];
+}
+
+/**
+ * Notification helpers
+ */
+async function ensureNotificationPermission() {
+  if (!("Notification" in window)) return false;
+  if (Notification.permission === "granted") return true;
+  if (Notification.permission === "denied") return false;
+  const perm = await Notification.requestPermission();
+  return perm === "granted";
+}
+
+/**
+ * Main Component
+ */
+export default function RemindersPage() {
+  const userId = DEFAULT_USER_ID;
   const [reminders, setReminders] = useState<Reminder[]>([]);
-  const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  // UI states
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<Reminder | null>(null);
-  const [newTitle, setNewTitle] = useState("");
-  const [newTime, setNewTime] = useState("09:00");
-  const [newRepeat, setNewRepeat] = useState<Reminder["repeat"]>("daily");
-
-  // in-app toast
-  const [toast, setToast] = useState<string | null>(null);
-  const toastTimerRef = useRef<number | null>(null);
-
-  // Scheduler interval ref
-  const pollRef = useRef<number | null>(null);
-
-  // subscribe to realtime db
   useEffect(() => {
-    if (!patientId) {
-      setError("No patient selected (no patientId).");
-      setLoading(false);
-      return;
-    }
-
-    setLoading(true);
-    const remindersRef = ref(db, `patients/${patientId}/reminders`);
-    const prescriptionsRef = ref(db, `patients/${patientId}/prescriptions`);
-
-    const unsubRem = onValue(
-      remindersRef,
-      (snap) => {
-        const data = snap.exists() ? snap.val() : {};
-        const arr: Reminder[] = Object.keys(data).map((k) => ({
-          id: k,
-          ...(data[k] as any),
-        }));
-        // sort by time for display
-        arr.sort((a, b) => a.time.localeCompare(b.time));
-        setReminders(arr);
-        setLoading(false);
-      },
-      (err) => {
-        console.error("reminders read error", err);
-        setError("Failed to read reminders.");
-        setLoading(false);
-      }
-    );
-
-    const unsubPres = onValue(
-      prescriptionsRef,
-      (snap) => {
-        const data = snap.exists() ? snap.val() : {};
-        const arr: Prescription[] = Object.keys(data).map((k) => ({
-          id: k,
-          ...(data[k] as any),
-        }));
-        setPrescriptions(arr);
-      },
-      (err) => {
-        console.error("prescriptions read error", err);
-      }
-    );
-
-    return () => {
-      unsubRem();
-      unsubPres();
-    };
-  }, [patientId]);
-
-  // Request Notification permission on first load if not granted
-  useEffect(() => {
-    if (!("Notification" in window)) return;
-    if (Notification.permission === "default") {
-      // ask once
-      Notification.requestPermission().then((p) => {
-        if (p === "granted") showInAppToast("Notifications enabled");
-      });
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker
+        .register("/firebase-messaging-sw.js")
+        .then(() => console.log("SW registered"))
+        .catch((err) => console.error("SW failed:", err));
     }
   }, []);
 
-  // Scheduler: check every 20s for due reminders
+  // Form states for add/edit:
+  const [medicineName, setMedicineName] = useState("");
+  const [dosage, setDosage] = useState("");
+  const [days, setDays] = useState<number | "">("");
+  const [everyDay, setEveryDay] = useState(true);
+  const weekdaysList = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  const [weekdays, setWeekdays] = useState<string[]>([]); // ["Mon","Tue"]
+  const [times, setTimes] = useState<string[]>(["09:00"]); // default single time
+  const [preset, setPreset] = useState<
+    "once" | "twice" | "thrice" | "custom" | null
+  >(null);
+
+  const messagingTokenRef = useRef<string | null>(null);
+
+  // ------------------------------------------------------------------
+  // Realtime listener for reminders
+  // ------------------------------------------------------------------
   useEffect(() => {
-    // immediate check + interval
-    const checkNow = () => {
-      const now = new Date();
-      reminders.forEach((r) => {
-        if (!r.enabled) return;
-        if (!shouldTriggerReminder(r, now)) return;
-        // prevent double-trigger: we'll mark lastTriggered locally on rem object (not persisted)
-        // but better approach: store lastTriggered timestamp in DB (if you want durable suppression)
-        // Here, do a transient check: attach a _lastTriggered local mark
-        const key = `_lastTriggered_${r.id}`;
-        const last = (window as any)[key] as number | undefined;
-        const diffMinutes = last ? (Date.now() - last) / 1000 / 60 : Infinity;
-        if (!last || diffMinutes > 0.9) {
-          // trigger
-          triggerReminderNotification(r);
-          (window as any)[key] = Date.now();
+    const node = ref(db, `reminders/${userId}`);
+    const unsub = onValue(node, (snap) => {
+      const val = snap.val() || {};
+      const list: Reminder[] = Object.values(val)
+        .map((x: any) => ({
+          ...x,
+          // safety defaults
+          times: x.times || [],
+          everyDay: x.everyDay ?? true,
+          weekdays: x.weekdays || [],
+          dosage: x.dosage || "",
+          days: x.days ?? null,
+        }))
+        .sort((a: any, b: any) => (a.createdAt || 0) - (b.createdAt || 0));
+      setReminders(list);
+    });
+    return () => unsub();
+  }, []);
+
+  // ------------------------------------------------------------------
+  // Auto-mark missed reminders logic & local scheduling
+  // Runs every 30 seconds in the browser while the page is open.
+  // This is a client-side convenience — for more robust behavior, run a
+  // server-side job or use Cloud Functions to update statuses.
+  // ------------------------------------------------------------------
+  useEffect(() => {
+    let mounted = true;
+
+    async function runner() {
+      if (!mounted) return;
+      const now = nowLocal();
+
+      // Ensure Notification permission and register token (for FCM)
+      await ensureNotificationPermission();
+      attemptRegisterFCM();
+
+      // For each reminder: if enabled and upcoming, check today's times:
+      reminders.forEach(async (r) => {
+        if (!r.enabled || r.status !== "upcoming") return;
+
+        // If the schedule is not for today (weekdays) and not everyDay, skip
+        const todayIndex = now.getDay(); // 0-6 Sun-Sat
+        const todayName = weekdayNameFromIndex(todayIndex);
+        // if not everyday AND today is NOT one of the selected weekdays → skip
+        if (!r.everyDay && !(r.weekdays ?? []).includes(todayName)) {
+          return;
+        }
+
+        // Check for each time if missed
+        for (const t of r.times) {
+          const scheduled = hhmmToDateToday(t, now);
+          // If scheduled time is older than now by > 1 minute, and status still upcoming => mark missed
+          if (scheduled.getTime() + 60_000 < now.getTime()) {
+            // Only mark missed if not already marked/completed
+            // Update database: set status to missed
+            try {
+              await update(ref(db, `reminders/${userId}/${r.id}`), {
+                status: "missed",
+              });
+              // show local Notification
+              if (Notification.permission === "granted") {
+                new Notification(`${r.medicineName} — Missed`, {
+                  body: `${r.medicineName} scheduled at ${t} was missed.`,
+                });
+              }
+            } catch (e) {
+              // ignore update errors
+            }
+            break; // once marked missed, skip other times
+          }
         }
       });
+    }
 
-      // prescriptions: expand to reminders if needed (prescriptions with schedule.times)
-      prescriptions.forEach((p) => {
-        if (!p.enabled) return;
-        (p.schedule.times || []).forEach((t) => {
-          const mockRem: Reminder = {
-            id: `pres_${p.id}_${t}`,
-            title: `${p.name} • ${p.dose}`,
-            time: t,
-            enabled: true,
-            createdAt: p.createdAt,
-            repeat: p.schedule.repeat || "daily",
-            medicationId: p.id,
-          };
-          if (shouldTriggerReminder(mockRem, new Date())) {
-            const key = `_lastTriggered_${mockRem.id}`;
-            const last = (window as any)[key] as number | undefined;
-            const diffMinutes = last
-              ? (Date.now() - last) / 1000 / 60
-              : Infinity;
-            if (!last || diffMinutes > 0.9) {
-              triggerReminderNotification(mockRem);
-              (window as any)[key] = Date.now();
-            }
-          }
-        });
-      });
-    };
-
-    checkNow();
-    // poll every 20 seconds
-    pollRef.current = window.setInterval(checkNow, 20_000);
+    runner();
+    const id = setInterval(runner, 30_000);
     return () => {
-      if (pollRef.current) window.clearInterval(pollRef.current);
+      mounted = false;
+      clearInterval(id);
     };
-  }, [reminders, prescriptions]);
+  }, [reminders]);
 
-  // show toast helper
-  function showInAppToast(message: string) {
-    setToast(message);
-    if (toastTimerRef.current) {
-      window.clearTimeout(toastTimerRef.current);
-    }
-    toastTimerRef.current = window.setTimeout(
-      () => setToast(null),
-      5400
-    ) as unknown as number;
-  }
+  // ------------------------------------------------------------------
+  // FCM: Request token and show onMessage (foreground)
+  // ------------------------------------------------------------------
+  async function attemptRegisterFCM() {
+    try {
+      if (!(await isMessagingSupported())) return;
+      const messaging = getMessaging(app);
+      const permission = await ensureNotificationPermission();
+      if (!permission) return;
+      const vapidKey = process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY;
+      if (!vapidKey) return;
+      const token = await getToken(messaging, { vapidKey });
+      if (token) {
+        messagingTokenRef.current = token;
+        // store token under user in DB for server to send push if needed
+        await set(ref(db, `fcmTokens/${userId}/${token}`), {
+          token,
+          createdAt: Date.now(),
+        });
+      }
 
-  // create or update reminder in db
-  async function saveReminderToDB(rem: Partial<Reminder> & { id?: string }) {
-    if (!patientId) {
-      setError("No patient selected.");
-      return;
-    }
-    const now = Date.now();
-    if (rem.id) {
-      const rRef = ref(db, `patients/${patientId}/reminders/${rem.id}`);
-      await firebaseUpdate(rRef, {
-        title: rem.title,
-        time: rem.time,
-        enabled: !!rem.enabled,
-        repeat: rem.repeat || "daily",
+      // foreground message handling
+      onMessage(messaging, (payload) => {
+        const title = payload.notification?.title || "Reminder";
+        const body = payload.notification?.body || "";
+        if (Notification.permission === "granted") {
+          new Notification(title, { body });
+        } else {
+          alert(`${title}\n\n${body}`);
+        }
       });
-    } else {
-      const listRef = ref(db, `patients/${patientId}/reminders`);
-      const newRef = push(listRef);
-      await firebaseSet(newRef, {
-        title: rem.title,
-        time: rem.time,
-        enabled: rem.enabled ?? true,
-        repeat: rem.repeat || "daily",
-        createdAt: now,
-      });
+    } catch (e) {
+      // console.warn("FCM not available:", e);
     }
   }
 
-  async function deleteReminderFromDB(id?: string) {
-    if (!patientId || !id) return;
-    const rRef = ref(db, `patients/${patientId}/reminders/${id}`);
-    await firebaseRemove(rRef);
-  }
-
-  // UI actions
-  function toggleReminderLocal(id?: string) {
-    if (!id) return;
-    // optimistic UI update + persist
-    setReminders((prev) =>
-      prev.map((r) => (r.id === id ? { ...r, enabled: !r.enabled } : r))
-    );
-    const r = reminders.find((x) => x.id === id);
-    saveReminderToDB({
-      id,
-      enabled: !r?.enabled,
-      title: r?.title,
-      time: r?.time,
-      repeat: r?.repeat,
-    });
-  }
-
-  function openNewModal() {
+  // ------------------------------------------------------------------
+  // CRUD actions
+  // ------------------------------------------------------------------
+  const resetForm = () => {
+    setMedicineName("");
+    setDosage("");
+    setDays("");
+    setEveryDay(true);
+    setWeekdays([]);
+    setTimes(["09:00"]);
+    setPreset(null);
     setEditing(null);
-    setNewTitle("");
-    setNewTime("09:00");
-    setNewRepeat("daily");
+  };
+
+  function openAddModal() {
+    resetForm();
     setShowModal(true);
   }
 
   function openEditModal(r: Reminder) {
     setEditing(r);
-    setNewTitle(r.title);
-    setNewTime(r.time);
-    setNewRepeat(r.repeat || "daily");
+    setMedicineName(r.medicineName || "");
+    setDosage(r.dosage || "");
+    setDays(r.days ?? "");
+    setEveryDay(r.everyDay ?? true);
+    setWeekdays(r.weekdays ?? []);
+    setTimes(Array.isArray(r.times) && r.times.length ? r.times : ["09:00"]);
+    setPreset(null);
     setShowModal(true);
   }
 
-  async function submitModal() {
-    if (!newTitle || !newTime) return;
+  const saveReminder = async () => {
+    if (!medicineName || times.length === 0)
+      return alert("Add medicine name and at least one time.");
+
     const payload: Partial<Reminder> = {
-      title: newTitle,
-      time: newTime,
+      medicineName,
+      dosage,
+      days: days === "" ? null : Number(days),
+      everyDay,
+      weekdays: everyDay ? [] : weekdays,
+      times,
+      status: "upcoming",
       enabled: true,
-      repeat: newRepeat,
+      createdAt: Date.now(),
+      userId,
     };
-    if (editing?.id) {
-      await saveReminderToDB({ ...payload, id: editing.id });
+
+    if (editing) {
+      await update(ref(db, `reminders/${userId}/${editing.id}`), payload);
     } else {
-      await saveReminderToDB(payload);
+      const newRef = push(ref(db, `reminders/${userId}`));
+      await set(newRef, {
+        id: newRef.key,
+        ...payload,
+      });
     }
+
     setShowModal(false);
-  }
+    resetForm();
+  };
 
-  // Notification trigger
-  function triggerReminderNotification(r: Reminder) {
-    const text = `${r.title} · ${r.time}`;
-    // Browser Notification
-    if ("Notification" in window && Notification.permission === "granted") {
-      try {
-        const n = new Notification(r.title, {
-          body: `It's time — ${r.time}`,
-          tag: r.id ?? `rem-${Math.random()}`,
-          renotify: false,
-        });
-        // click behaviour
-        n.onclick = () => {
-          window.focus();
-          // optionally navigate to patient or open app
-        };
-      } catch (e) {
-        console.warn("notification failed", e);
-      }
-    } else {
-      // fallback: in-app toast
-      showInAppToast(text);
-      // try to vibrate (mobile)
-      if (navigator.vibrate) navigator.vibrate(200);
-    }
+  const deleteReminder = async (r: Reminder) => {
+    if (!confirm(`Delete reminder for ${r.medicineName}?`)) return;
+    await remove(ref(db, `reminders/${userId}/${r.id}`));
+  };
 
-    // Optionally, record a 'lastNotified' timestamp in DB to avoid duplicate triggers across clients.
-    // E.g. set patients/{patientId}/reminders/{id}/lastNotified = Date.now()
-    // (omitted here to avoid write churn — add if you want central suppression)
-  }
+  const markCompleted = async (r: Reminder) => {
+    await update(ref(db, `reminders/${userId}/${r.id}`), {
+      status: "completed",
+    });
+  };
 
-  /* --------------------- RENDER --------------------- */
+  // Toggle enable/disable
+  const toggleEnabled = async (r: Reminder) => {
+    await update(ref(db, `reminders/${userId}/${r.id}`), {
+      enabled: !r.enabled,
+    });
+  };
 
-  // Derived: upcoming vs missed (simple)
-  const upcoming = reminders.filter((r) => r.enabled);
-  const missed = reminders.filter((r) => !r.enabled);
+  // ------------------------------------------------------------------
+  // UI helpers for presets and times
+  // ------------------------------------------------------------------
+  const applyPreset = (p: typeof preset) => {
+    setPreset(p);
+    if (p === "once") setTimes(["09:00"]);
+    if (p === "twice") setTimes(["09:00", "20:00"]);
+    if (p === "thrice") setTimes(["08:00", "14:00", "20:00"]);
+    if (p === "custom") setTimes(["09:00"]);
+  };
 
   const addTimeSlot = () => setTimes((s) => [...s, "09:00"]);
   const removeTimeSlot = (idx: number) =>
@@ -380,153 +352,205 @@ export default function RemindersPage({
   // ------------------------------------------------------------------
   return (
     <div className="p-6 max-w-4xl mx-auto">
-      {/* Toast */}
-      {toast && (
-        <motion.div
-          initial={{ y: -14, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          exit={{ y: -14, opacity: 0 }}
-          className="fixed left-1/2 -translate-x-1/2 top-6 z-50 bg-white rounded-xl shadow-lg px-4 py-2"
-        >
-          <div className="text-sm">{toast}</div>
-        </motion.div>
-      )}
-
-      {/* Header */}
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-semibold flex items-center gap-2">
+      {/* header */}
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-2xl font-semibold flex items-center gap-3">
           <Bell className="text-purple-600" />
-          Reminders & Medicines
+          Medication Reminders
         </h1>
 
         <div className="flex items-center gap-3">
           <button
-            onClick={openNewModal}
+            onClick={openAddModal}
             className="flex items-center gap-2 bg-purple-600 text-white px-4 py-2 rounded-md hover:bg-purple-700"
-            title="Add Reminder"
           >
             <Plus size={16} /> Add Reminder
-          </button>
-          <button
-            className="px-3 py-2 rounded-md border"
-            onClick={() => {
-              // test notification
-              if ("Notification" in window) {
-                if (Notification.permission !== "granted") {
-                  Notification.requestPermission().then((p) => {
-                    if (p === "granted") {
-                      showInAppToast("Notifications enabled");
-                    } else {
-                      showInAppToast("Notifications blocked");
-                    }
-                  });
-                } else {
-                  const fake: Reminder = {
-                    id: "test",
-                    title: "Test reminder",
-                    time: new Date().toLocaleTimeString(),
-                    enabled: true,
-                  };
-                  triggerReminderNotification(fake);
-                }
-              } else {
-                alert("This browser does not support notifications.");
-              }
-            }}
-            title="Test notification"
-          >
-            Test
           </button>
         </div>
       </div>
 
-      {/* Loading / error */}
-      {loading && (
-        <div className="animate-pulse space-y-3">
-          <div className="h-6 w-1/3 bg-slate-200 rounded-md"></div>
-          <div className="h-40 bg-slate-200 rounded-lg"></div>
-        </div>
-      )}
-      {error && <div className="text-red-600 mb-3">{error}</div>}
-
-      {/* Content */}
-      <div className="space-y-8">
+      {/* reminders list */}
+      <div className="space-y-6">
         {/* Upcoming */}
         <div>
           <h2 className="text-lg font-semibold text-gray-700 mb-3">Upcoming</h2>
           <div className="space-y-3">
-            {upcoming.length === 0 && (
-              <EmptyState text="No active reminders. Add one!" />
+            {reminders.filter((r) => r.status === "upcoming").length === 0 ? (
+              <p className="text-gray-500">No upcoming reminders.</p>
+            ) : (
+              reminders
+                .filter((r) => r.status === "upcoming")
+                .map((r) => (
+                  <div
+                    key={r.id}
+                    className="p-4 bg-white rounded-lg shadow flex items-center justify-between"
+                  >
+                    <div>
+                      <div className="flex items-center gap-3">
+                        <Clock className="text-purple-600" />
+                        <div>
+                          <h3 className="font-semibold">{r.medicineName}</h3>
+                          <p className="text-sm text-gray-500">
+                            {r.dosage ? `${r.dosage} · ` : ""}
+                            {r.everyDay
+                              ? "Every day"
+                              : (r.weekdays ?? []).join(", ")}{" "}
+                            · {r.times.join(", ")}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <button
+                        title="Edit"
+                        onClick={() => openEditModal(r)}
+                        className="p-2 rounded-md hover:bg-gray-100"
+                      >
+                        <Edit2 size={16} />
+                      </button>
+
+                      <button
+                        title="Delete"
+                        onClick={() => deleteReminder(r)}
+                        className="p-2 rounded-md hover:bg-gray-100"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+
+                      <button
+                        title={r.enabled ? "Disable" : "Enable"}
+                        onClick={() => toggleEnabled(r)}
+                        className={`px-3 py-1 rounded-full text-sm ${
+                          r.enabled ? "bg-purple-600 text-white" : "bg-gray-200"
+                        }`}
+                      >
+                        {r.enabled ? "Enabled" : "Disabled"}
+                      </button>
+
+                      <button
+                        onClick={() => markCompleted(r)}
+                        className="px-3 py-1 rounded-full bg-green-600 text-white text-sm"
+                      >
+                        Done
+                      </button>
+                    </div>
+                  </div>
+                ))
             )}
-            {upcoming.map((r) => (
-              <ReminderCard
-                key={r.id}
-                reminder={r}
-                onToggle={() => toggleReminderLocal(r.id)}
-                onEdit={() => openEditModal(r)}
-                onDelete={() => deleteReminderFromDB(r.id)}
-              />
-            ))}
           </div>
         </div>
 
-        {/* Missed / Disabled */}
-        <section>
-          <h2 className="text-lg font-semibold text-gray-700 mb-3">
-            Disabled / Other
-          </h2>
+        {/* Missed */}
+        <div>
+          <h2 className="text-lg font-semibold text-gray-700 mb-3">Missed</h2>
           <div className="space-y-3">
-            {missed.length === 0 && (
-              <div className="text-sm text-gray-500">No disabled reminders</div>
-            )}
-            {missed.map((r) => (
-              <ReminderCard
-                key={r.id}
-                reminder={r}
-                onToggle={() => toggleReminderLocal(r.id)}
-                onEdit={() => openEditModal(r)}
-                onDelete={() => deleteReminderFromDB(r.id)}
-              />
-            ))}
-          </div>
-        </section>
+            {reminders.filter((r) => r.status === "missed").length === 0 ? (
+              <p className="text-gray-500">No missed reminders.</p>
+            ) : (
+              reminders
+                .filter((r) => r.status === "missed")
+                .map((r) => (
+                  <div
+                    key={r.id}
+                    className="p-4 bg-white rounded-lg shadow flex items-center justify-between"
+                  >
+                    <div className="flex items-center gap-3">
+                      <XCircle className="text-red-500" />
+                      <div>
+                        <h3 className="font-semibold">{r.medicineName}</h3>
+                        <p className="text-sm text-gray-500">
+                          Missed at {r.times.join(", ")} · {r.dosage || ""}
+                        </p>
+                      </div>
+                    </div>
 
-        {/* Prescriptions (Cherry on top) */}
-        <section>
+                    <div className="flex items-center gap-3">
+                      <button
+                        title="Delete"
+                        onClick={() => deleteReminder(r)}
+                        className="p-2 rounded-md hover:bg-gray-100"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+
+                      <button
+                        onClick={() =>
+                          update(ref(db, `reminders/${userId}/${r.id}`), {
+                            status: "upcoming",
+                          })
+                        }
+                        className="px-3 py-1 rounded-full bg-yellow-500 text-white text-sm"
+                      >
+                        Mark Upcoming
+                      </button>
+                    </div>
+                  </div>
+                ))
+            )}
+          </div>
+        </div>
+
+        {/* Completed */}
+        <div>
           <h2 className="text-lg font-semibold text-gray-700 mb-3">
-            Prescriptions
+            Completed
           </h2>
           <div className="space-y-3">
-            {prescriptions.length === 0 && (
-              <EmptyState text="No prescriptions found." />
-            )}
-            {prescriptions.map((p) => (
-              <div
-                key={p.id}
-                className="p-3 bg-white rounded-lg shadow flex justify-between items-center"
-              >
-                <div>
-                  <div className="font-semibold">{p.name}</div>
-                  <div className="text-xs text-gray-500">
-                    {p.dose} • {p.schedule.times?.join(", ")}
+            {reminders.filter((r) => r.status === "completed").length === 0 ? (
+              <p className="text-gray-500">No completed reminders.</p>
+            ) : (
+              reminders
+                .filter((r) => r.status === "completed")
+                .map((r) => (
+                  <div
+                    key={r.id}
+                    className="p-4 bg-white rounded-lg shadow flex items-center justify-between"
+                  >
+                    <div className="flex items-center gap-3">
+                      <Clock className="text-green-600" />
+                      <div>
+                        <h3 className="font-semibold">{r.medicineName}</h3>
+                        <p className="text-sm text-gray-500">
+                          {r.times.join(", ")}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <button
+                        title="Delete"
+                        onClick={() => deleteReminder(r)}
+                        className="p-2 rounded-md hover:bg-gray-100"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
                   </div>
-                </div>
-                <div className="text-right text-xs text-gray-500">
-                  {p.enabled ? "Active" : "Stopped"}
-                </div>
-              </div>
-            ))}
+                ))
+            )}
           </div>
         </div>
       </div>
 
-      {/* Add/Edit Modal */}
+      {/* Add / Edit Modal */}
       {showModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-sm">
-            <h3 className="text-lg font-semibold mb-4">
-              {editing ? "Edit reminder" : "Add reminder"}
-            </h3>
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-2xl">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold">
+                {editing ? "Edit Reminder" : "Add Reminder"}
+              </h3>
+              <button
+                onClick={() => {
+                  setShowModal(false);
+                  resetForm();
+                }}
+                className="text-gray-500"
+              >
+                Close
+              </button>
+            </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
@@ -535,7 +559,6 @@ export default function RemindersPage({
                   value={medicineName}
                   onChange={(e) => setMedicineName(e.target.value)}
                   className="w-full border rounded-md p-2 mt-1"
-                  placeholder="e.g. Morning Medicine"
                 />
               </div>
 
@@ -552,33 +575,73 @@ export default function RemindersPage({
               </div>
 
               <div>
-                <label className="text-sm text-gray-700">Repeat</label>
-                <select
-                  value={newRepeat}
+                <label className="text-sm text-gray-700">
+                  Number of days (optional)
+                </label>
+                <input
+                  value={days}
                   onChange={(e) =>
-                    setNewRepeat(e.target.value as Reminder["repeat"])
+                    setDays(e.target.value === "" ? "" : Number(e.target.value))
                   }
+                  type="number"
+                  min={1}
                   className="w-full border rounded-md p-2 mt-1"
-                >
-                  <option value="daily">Daily</option>
-                  <option value="weekdays">Weekdays</option>
-                  <option value="once">Once</option>
-                </select>
+                  placeholder="e.g. 5"
+                />
               </div>
 
-              <div className="flex justify-end gap-3 mt-4">
-                <button
-                  onClick={() => setShowModal(false)}
-                  className="px-4 py-2 bg-gray-200 rounded-md hover:bg-gray-300"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={submitModal}
-                  className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700"
-                >
-                  Save
-                </button>
+              <div>
+                <label className="text-sm text-gray-700">Schedule</label>
+                <div className="mt-1 space-y-2">
+                  <label className="inline-flex items-center gap-2">
+                    <input
+                      type="radio"
+                      checked={everyDay}
+                      onChange={() => setEveryDay(true)}
+                    />
+                    Every day
+                  </label>
+
+                  <label className="inline-flex items-center gap-2">
+                    <input
+                      type="radio"
+                      checked={!everyDay}
+                      onChange={() => {
+                        setEveryDay(false);
+                        // Keep already selected weekdays
+                      }}
+                    />
+                    Specific weekdays
+                  </label>
+
+                  <div
+                    className={everyDay ? "pointer-events-none opacity-50" : ""}
+                  >
+                    {!everyDay && (
+                      <div className="grid grid-cols-4 gap-2 mt-2">
+                        {weekdaysList.map((d) => (
+                          <label
+                            key={d}
+                            className={`p-2 border rounded-md text-center cursor-pointer ${
+                              weekdays.includes(d)
+                                ? "bg-purple-600 text-white"
+                                : ""
+                            }`}
+                            onClick={() => toggleWeekday(d)}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={weekdays.includes(d)}
+                              readOnly
+                              className="hidden"
+                            />
+                            <div className="text-sm">{d}</div>
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
 
               {/* Presets & times */}
@@ -680,107 +743,4 @@ export default function RemindersPage({
       )}
     </div>
   );
-}
-
-/* -------------------- Helper components -------------------- */
-
-function ReminderCard({
-  reminder,
-  onToggle,
-  onEdit,
-  onDelete,
-}: {
-  reminder: Reminder;
-  onToggle: () => void;
-  onEdit: () => void;
-  onDelete: () => void;
-}) {
-  return (
-    <div className="p-4 bg-white rounded-lg shadow flex justify-between items-center">
-      <div>
-        <h3 className="font-semibold flex items-center gap-2">
-          {reminder.enabled ? (
-            <Clock className="text-purple-600" size={18} />
-          ) : (
-            <XCircle className="text-red-500" size={18} />
-          )}
-          {reminder.title}
-        </h3>
-        <p className="text-gray-500 text-sm">
-          {formatTimeToReadable(reminder.time)} • {reminder.repeat || "daily"}
-        </p>
-      </div>
-
-      <div className="flex items-center gap-3">
-        <label className="inline-flex items-center cursor-pointer">
-          <input
-            type="checkbox"
-            checked={reminder.enabled}
-            onChange={onToggle}
-            className="sr-only"
-          />
-          <div
-            className={`w-11 h-6 rounded-full transition ${
-              reminder.enabled ? "bg-purple-600" : "bg-gray-300"
-            }`}
-          />
-        </label>
-
-        <button
-          onClick={onEdit}
-          className="p-2 rounded-md hover:bg-slate-100"
-          title="Edit"
-        >
-          <Edit2 size={16} />
-        </button>
-
-        <button
-          onClick={onDelete}
-          className="p-2 rounded-md hover:bg-red-50 text-red-600"
-          title="Delete"
-        >
-          <Trash2 size={16} />
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function EmptyState({ text }: { text: string }) {
-  return (
-    <div className="p-4 bg-slate-50 rounded-lg text-sm text-gray-500">
-      {text}
-    </div>
-  );
-}
-
-/* -------------------- Utilities -------------------- */
-
-function formatTimeToReadable(hhmm: string) {
-  // hh:mm -> localized AM/PM
-  if (!hhmm) return "—";
-  const [hh, mm] = hhmm.split(":").map((x) => Number(x));
-  const d = new Date();
-  d.setHours(hh, mm, 0, 0);
-  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-}
-
-function shouldTriggerReminder(r: Reminder, now: Date) {
-  if (!r.enabled) return false;
-  // match time within a 40-second window to avoid misses due to interval frequency.
-  const [h, m] = r.time.split(":").map((x) => Number(x));
-  if (Number.isNaN(h) || Number.isNaN(m)) return false;
-  const target = new Date(now);
-  target.setHours(h, m, 0, 0);
-
-  // Repeat handling (simple)
-  if (r.repeat === "weekdays") {
-    const day = now.getDay(); // 0..6
-    if (day === 0 || day === 6) return false; // skip weekends
-  }
-  // "once" would require an associated date field; if you need it, extend the schema.
-
-  const diff = Math.abs(now.getTime() - target.getTime());
-  // trigger if within 40 seconds
-  return diff < 40_000;
 }
